@@ -1,0 +1,66 @@
+{
+  "generatedAt": "2026-06-05T00:00:00.000Z",
+  "source": "sample data",
+  "bills": [
+    {
+      "id": "SAMPLE-001",
+      "billNo": "220001",
+      "billName": "개인정보 보호법 일부개정법률안",
+      "proposer": "김민정의원 등 12인",
+      "proposeDate": "2026-05-28",
+      "committee": "정무위원회",
+      "status": "위원회 심사",
+      "summary": "개인정보 처리 위탁 관리와 유출 통지 기준을 강화하는 내용",
+      "businessImpact": "고객 데이터 처리 절차, 사고 대응, 수탁사 관리 기준 점검 필요",
+      "oc": "검토",
+      "importance": "high",
+      "impactArea": "개인정보/데이터",
+      "url": "https://likms.assembly.go.kr/bill/main.do"
+    },
+    {
+      "id": "SAMPLE-002",
+      "billNo": "220002",
+      "billName": "근로기준법 일부개정법률안",
+      "proposer": "박준호의원 등 10인",
+      "proposeDate": "2026-05-16",
+      "committee": "환경노동위원회",
+      "status": "소위원회 회부",
+      "summary": "근로시간 산정과 휴게시간 운영 기준을 명확히 하는 내용",
+      "businessImpact": "인사 운영, 근태 시스템, 사업장 운영정책 변경 가능성",
+      "oc": "관찰",
+      "importance": "high",
+      "impactArea": "노동/인사",
+      "url": "https://likms.assembly.go.kr/bill/main.do"
+    },
+    {
+      "id": "SAMPLE-003",
+      "billNo": "220003",
+      "billName": "전자상거래 등에서의 소비자보호에 관한 법률 일부개정법률안",
+      "proposer": "이서연의원 등 15인",
+      "proposeDate": "2026-04-21",
+      "committee": "정무위원회",
+      "status": "접수",
+      "summary": "온라인 플랫폼의 표시광고 책임과 분쟁 처리 절차를 보완하는 내용",
+      "businessImpact": "플랫폼 운영정책, 판매자 관리, 고객 고지 문구 검토 필요",
+      "oc": "",
+      "importance": "medium",
+      "impactArea": "플랫폼/소비자",
+      "url": "https://likms.assembly.go.kr/bill/main.do"
+    },
+    {
+      "id": "SAMPLE-004",
+      "billNo": "220004",
+      "billName": "법인세법 일부개정법률안",
+      "proposer": "정하늘의원 등 11인",
+      "proposeDate": "2026-03-08",
+      "committee": "기획재정위원회",
+      "status": "위원회 상정",
+      "summary": "연구개발 세액공제 적용 요건과 증빙 기준을 조정하는 내용",
+      "businessImpact": "세무 신고, R&D 비용 처리, 증빙 보관 프로세스 영향",
+      "oc": "",
+      "importance": "medium",
+      "impactArea": "세무/재무",
+      "url": "https://likms.assembly.go.kr/bill/main.do"
+    }
+  ]
+}

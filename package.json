@@ -1,0 +1,11 @@
+{
+  "name": "law-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch:bills": "node scripts/fetch-open-assembly.mjs",
+    "fetch:bills:prompt": "node scripts/fetch-open-assembly-prompt.mjs",
+    "serve": "python3 -m http.server 5173"
+  }
+}

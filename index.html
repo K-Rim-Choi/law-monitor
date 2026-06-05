@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Law Monitor | 정책Comm.팀 중점관리법안 대시보드</title>
+    <link rel="stylesheet" href="assets/styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">National Assembly Amendment Monitor</p>
+        <h1>중점관리법안 대시보드</h1>
+      </div>
+      <div class="meta">
+        <span id="generatedAt">갱신 중</span>
+        <span id="sourceName">SKI 정책Comm.팀</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="요약 지표">
+        <article class="metric">
+          <span>전체 개정안</span>
+          <strong id="totalCount">0</strong>
+        </article>
+        <article class="metric urgent">
+          <span>높은 중요도</span>
+          <strong id="highCount">0</strong>
+        </article>
+        <article class="metric">
+          <span>심사 중</span>
+          <strong id="reviewCount">0</strong>
+        </article>
+        <article class="metric">
+          <span>최근 30일</span>
+          <strong id="recentCount">0</strong>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <aside class="filters" aria-label="필터">
+          <label>
+            검색
+            <input id="searchInput" type="search" placeholder="법안명, 의원, 내용">
+          </label>
+
+          <label>
+            중요도
+            <select id="importanceFilter">
+              <option value="all">전체</option>
+              <option value="high">높음</option>
+              <option value="medium">중간</option>
+              <option value="low">낮음</option>
+            </select>
+          </label>
+
+          <label>
+            심사 현황
+            <select id="statusFilter">
+              <option value="all">전체</option>
+            </select>
+          </label>
+
+          <label>
+            사업영향
+            <select id="impactFilter">
+              <option value="all">전체</option>
+            </select>
+          </label>
+
+          <section class="watchlist-panel" aria-label="내 추적 의안">
+            <div>
+              <h2>F/up 의안 추가하기</h2>
+              <p>추가 버튼 클릭 이후 브라우저에 저장됩니다.</p>
+            </div>
+            <form id="watchlistForm" class="watchlist-form">
+              <label>
+                의안번호
+                <textarea
+                  id="billNoInput"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  rows="3"
+                  placeholder="예: 2219094, 2219095&#10;쉼표, 공백, 줄바꿈으로 여러 건 입력"
+                ></textarea>
+              </label>
+              <button type="submit">추가</button>
+            </form>
+            <p id="watchlistHint" class="watchlist-hint"></p>
+          </section>
+        </aside>
+
+        <section class="table-panel" aria-label="개정안 목록">
+          <div class="table-header">
+            <div>
+              <h2>개정안 목록</h2>
+              <p id="resultCount">0건 표시</p>
+            </div>
+            <div class="table-actions">
+              <label class="btn-file">
+                가져오기
+                <input id="importFile" type="file" accept=".json">
+              </label>
+              <button id="exportButton" type="button" class="btn-secondary">내보내기</button>
+              <button id="resetButton" type="button">필터 초기화</button>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-sort="importance">중요도</th>
+                  <th>O/C</th>
+                  <th data-sort="billName">법안명</th>
+                  <th data-sort="proposer">발의 의원</th>
+                  <th data-sort="committee">소관위원회</th>
+                  <th data-sort="proposeDate">발의일</th>
+                  <th data-sort="status">심사 현황</th>
+                  <th>주요 내용</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="billRows"></tbody>
+            </table>
+          </div>
+
+          <div id="pagination" class="pagination"></div>
+
+          <div id="emptyState" class="empty-state" hidden>조건에 맞는 개정안이 없습니다.</div>
+        </section>
+      </section>
+    </main>
+
+    <script src="assets/app.js" defer></script>
+  </body>
+</html>

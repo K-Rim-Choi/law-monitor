@@ -1,0 +1,52 @@
+name: Update bills and deploy Pages
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      OPEN_ASSEMBLY_API_KEY: ${{ secrets.OPEN_ASSEMBLY_API_KEY }}
+      BILL_KEYWORDS: ${{ vars.BILL_KEYWORDS || '개정,일부개정,전부개정' }}
+      BILL_ERACO: ${{ vars.BILL_ERACO || '22' }}
+      MAX_PAGES: ${{ vars.MAX_PAGES || '5' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch National Assembly bills
+        if: env.OPEN_ASSEMBLY_API_KEY != ''
+        run: node scripts/fetch-open-assembly.mjs
+
+      - name: Use sample data when API key is unavailable
+        if: env.OPEN_ASSEMBLY_API_KEY == ''
+        run: cp data/bills.sample.json data/bills.json
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
