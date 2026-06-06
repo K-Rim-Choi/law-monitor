@@ -981,7 +981,8 @@ tr:hover .remove-btn {
   .topbar,
   .filters,
   .table-actions,
-  .auth-gate {
+  .auth-gate,
+  .summary-grid {
     display: none !important;
   }
 
