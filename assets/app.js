@@ -47,7 +47,8 @@ const els = {
   billNoInput: document.querySelector("#billNoInput"),
   watchlistHint: document.querySelector("#watchlistHint"),
   pagination: document.querySelector("#pagination"),
-  importFile: document.querySelector("#importFile"),
+  saveBtn: document.querySelector("#importFile"),
+  saveMenu: document.querySelector("#saveMenu"),
   exportButton: document.querySelector("#exportButton"),
   githubSyncBadge: document.querySelector("#githubSyncBadge"),
   githubSyncMsg: document.querySelector("#githubSyncMsg"),
@@ -776,6 +777,41 @@ function exportOverrides() {
   URL.revokeObjectURL(url);
 }
 
+function exportAsExcel() {
+  const bills = (state.filtered || []).map((bill) => getBillWithOverrides(bill));
+  const headers = ["중요도", "O/C", "법안명", "의안번호", "발의자", "소관위원회", "발의일", "처리현황", "사업영향", "링크"];
+  const rows = bills.map((b) => [
+    getImportanceLabel(b.importance),
+    b.oc || "",
+    b.billName || "",
+    b.billNo || "",
+    b.proposer || "",
+    b.committee || "",
+    formatDate(b.proposeDate),
+    b.status || "",
+    b.impactArea || "",
+    b.url || "",
+  ]);
+
+  const csvContent = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const bom = "﻿";
+  const blob = new Blob([bom + csvContent], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"), {
+    href: url,
+    download: `law-monitor-${new Date().toISOString().slice(0, 10)}.csv`,
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportAsPdf() {
+  window.print();
+}
+
 function loadGithubPat() {
   return localStorage.getItem(GITHUB_PAT_STORAGE_KEY) || "";
 }
@@ -1032,11 +1068,22 @@ function bindEvents() {
   });
 
   els.exportButton.addEventListener("click", exportOverrides);
-  els.importFile.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      importOverrides(file);
-      event.target.value = "";
+
+  els.saveBtn.addEventListener("click", () => {
+    els.saveMenu.hidden = !els.saveMenu.hidden;
+  });
+
+  els.saveMenu.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-format]");
+    if (!btn) return;
+    els.saveMenu.hidden = true;
+    if (btn.dataset.format === "excel") exportAsExcel();
+    else if (btn.dataset.format === "pdf") exportAsPdf();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".save-dropdown-wrap")) {
+      els.saveMenu.hidden = true;
     }
   });
 

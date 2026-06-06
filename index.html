@@ -129,10 +129,13 @@
               <p id="resultCount">0건 표시</p>
             </div>
             <div class="table-actions">
-              <label class="btn-file">
-                가져오기
-                <input id="importFile" type="file" accept=".json">
-              </label>
+              <div class="save-dropdown-wrap">
+                <button id="importFile" type="button" class="btn-secondary">저장 ▾</button>
+                <div id="saveMenu" class="save-menu" hidden>
+                  <button type="button" data-format="excel">Excel (.csv)</button>
+                  <button type="button" data-format="pdf">PDF</button>
+                </div>
+              </div>
               <button id="exportButton" type="button" class="btn-secondary">내보내기</button>
               <button id="resetButton" type="button">필터 초기화</button>
             </div>

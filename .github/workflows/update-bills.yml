@@ -60,6 +60,18 @@ jobs:
         if: env.OPEN_ASSEMBLY_API_KEY == ''
         run: cp data/bills.sample.json data/bills.json
 
+      - name: Stamp generatedAt with sync time
+        if: steps.fetch_bills.outcome != 'success'
+        run: |
+          SYNC_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('data/bills.json', 'utf8'));
+            data.generatedAt = '$SYNC_TIME';
+            fs.writeFileSync('data/bills.json', JSON.stringify(data, null, 2) + '\n');
+          "
+          echo "Stamped generatedAt: $SYNC_TIME"
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true

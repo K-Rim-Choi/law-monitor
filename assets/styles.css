@@ -474,26 +474,40 @@ button:hover {
   border-color: var(--line);
 }
 
-.btn-file {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+.save-dropdown-wrap {
+  position: relative;
+}
+
+.save-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 200;
+  min-width: 140px;
   background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 4px 0;
+}
+
+.save-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--text);
-  font-size: 15px;
-  font-weight: 500;
   cursor: pointer;
+  min-height: unset;
 }
 
-.btn-file:hover {
+.save-menu button:hover {
   background: var(--surface-soft);
-}
-
-.btn-file input[type="file"] {
-  display: none;
 }
 
 .table-header h2 {
@@ -893,8 +907,7 @@ tr:hover .remove-btn {
   }
 
   .watchlist-form button,
-  .table-header button,
-  .table-header .btn-file {
+  .table-header button {
     width: 100%;
     justify-content: center;
   }
@@ -960,5 +973,22 @@ tr:hover .remove-btn {
 @media (min-width: 921px) and (max-width: 1160px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media print {
+  .topbar,
+  .filters,
+  .table-actions,
+  .auth-gate {
+    display: none !important;
+  }
+
+  .table-wrap {
+    overflow: visible;
+  }
+
+  body {
+    background: white;
   }
 }
