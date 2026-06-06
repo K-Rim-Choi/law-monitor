@@ -34,9 +34,27 @@ jobs:
         with:
           node-version: 22
 
+      - name: Test API connectivity
+        run: |
+          echo "Testing connection to open.assembly.go.kr..."
+          curl -s --max-time 10 -o /dev/null -w "HTTP %{http_code} | time %{time_total}s\n" \
+            "https://open.assembly.go.kr/portal/openapi/ALLBILLV2?KEY=$OPEN_ASSEMBLY_API_KEY&Type=json&pIndex=1&pSize=1" \
+            || echo "Connection failed (curl exit: $?)"
+
       - name: Fetch National Assembly bills
+        id: fetch_bills
         if: env.OPEN_ASSEMBLY_API_KEY != ''
         run: node scripts/fetch-open-assembly.mjs
+        continue-on-error: true
+
+      - name: Keep existing bills.json on fetch failure
+        if: steps.fetch_bills.outcome == 'failure'
+        run: |
+          echo "API fetch failed — keeping existing bills.json"
+          if [ ! -f data/bills.json ]; then
+            cp data/bills.sample.json data/bills.json
+            echo "No existing bills.json found, using sample data"
+          fi
 
       - name: Use sample data when API key is unavailable
         if: env.OPEN_ASSEMBLY_API_KEY == ''
