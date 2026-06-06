@@ -461,6 +461,7 @@ button:hover {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  overflow: visible;
 }
 
 .btn-secondary {

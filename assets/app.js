@@ -49,7 +49,6 @@ const els = {
   pagination: document.querySelector("#pagination"),
   saveBtn: document.querySelector("#importFile"),
   saveMenu: document.querySelector("#saveMenu"),
-  exportButton: document.querySelector("#exportButton"),
   githubSyncBadge: document.querySelector("#githubSyncBadge"),
   githubSyncMsg: document.querySelector("#githubSyncMsg"),
   githubPatSetup: document.querySelector("#githubPatSetup"),
@@ -1067,13 +1066,13 @@ function bindEvents() {
     }
   });
 
-  els.exportButton.addEventListener("click", exportOverrides);
-
-  els.saveBtn.addEventListener("click", () => {
+  els.saveBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
     els.saveMenu.hidden = !els.saveMenu.hidden;
   });
 
   els.saveMenu.addEventListener("click", (e) => {
+    e.stopPropagation();
     const btn = e.target.closest("[data-format]");
     if (!btn) return;
     els.saveMenu.hidden = true;
@@ -1081,10 +1080,8 @@ function bindEvents() {
     else if (btn.dataset.format === "pdf") exportAsPdf();
   });
 
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest(".save-dropdown-wrap")) {
-      els.saveMenu.hidden = true;
-    }
+  document.addEventListener("click", () => {
+    els.saveMenu.hidden = true;
   });
 
   els.githubPatSave.addEventListener("click", () => {
