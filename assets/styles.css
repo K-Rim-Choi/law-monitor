@@ -786,23 +786,67 @@ tr:hover .remove-btn {
   color: var(--text-secondary);
 }
 
-.summary-details summary {
-  cursor: pointer;
+.summary-expand-btn {
   width: fit-content;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
   color: var(--accent);
   font-size: 14px;
   font-weight: 500;
   line-height: 1.43;
+  cursor: pointer;
 }
 
-.summary-cell:has(.summary-details[open]) > .summary-preview {
+.summary-expand-btn:hover {
+  text-decoration: underline;
+}
+
+.summary-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.summary-modal[hidden] {
   display: none;
 }
 
-.summary-details p {
-  margin-top: 8px;
+.summary-modal-card {
+  width: min(640px, 90vw);
+  max-height: 70vh;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-modal-body {
+  padding: 32px 32px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.summary-modal-body p {
+  margin: 0;
   color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.75;
   white-space: pre-wrap;
+}
+
+.summary-modal-footer {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
 }
 
 .pagination {

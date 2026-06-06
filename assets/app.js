@@ -49,6 +49,9 @@ const els = {
   pagination: document.querySelector("#pagination"),
   saveBtn: document.querySelector("#importFile"),
   saveMenu: document.querySelector("#saveMenu"),
+  summaryModal: document.querySelector("#summaryModal"),
+  summaryModalText: document.querySelector("#summaryModalText"),
+  summaryModalClose: document.querySelector("#summaryModalClose"),
   githubSyncBadge: document.querySelector("#githubSyncBadge"),
   githubSyncMsg: document.querySelector("#githubSyncMsg"),
   githubPatSetup: document.querySelector("#githubPatSetup"),
@@ -585,10 +588,7 @@ function renderSummaryCell(summary) {
   return `
     <div class="summary-cell">
       <p class="summary-preview">${escapeHtml(preview)}</p>
-      <details class="summary-details">
-        <summary>전체 보기</summary>
-        <p>${escapeHtml(text)}</p>
-      </details>
+      <button type="button" class="summary-expand-btn" data-full-text="${escapeHtml(text)}">▶ 전체 보기</button>
     </div>
   `;
 }
@@ -1053,6 +1053,14 @@ function bindEvents() {
       return;
     }
 
+    const expandBtn = event.target.closest(".summary-expand-btn");
+    if (expandBtn) {
+      els.summaryModalText.textContent = expandBtn.dataset.fullText;
+      els.summaryModal.hidden = false;
+      document.body.style.overflow = "hidden";
+      return;
+    }
+
     const importanceCell = event.target.closest("td[data-field='importance']");
     if (importanceCell && !importanceCell.querySelector("select")) {
       openImportanceEditor(importanceCell);
@@ -1064,6 +1072,19 @@ function bindEvents() {
       openOcEditor(ocCell);
       return;
     }
+  });
+
+  function closeSummaryModal() {
+    els.summaryModal.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  els.summaryModalClose.addEventListener("click", closeSummaryModal);
+  els.summaryModal.addEventListener("click", (e) => {
+    if (e.target === els.summaryModal) closeSummaryModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeSummaryModal();
   });
 
   els.saveBtn.addEventListener("click", (e) => {
