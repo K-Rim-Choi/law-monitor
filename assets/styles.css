@@ -229,6 +229,81 @@ main {
   min-height: 18px;
 }
 
+.github-sync-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.github-sync-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.github-sync-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.33;
+  color: var(--text);
+}
+
+.github-sync-badge {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.33;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.github-sync-badge.connected {
+  background: #edf2ed;
+  color: var(--ok);
+}
+
+.github-sync-badge.syncing {
+  background: #f3f1ea;
+  color: var(--warn);
+}
+
+.github-sync-badge.error {
+  background: #f2efed;
+  color: var(--danger);
+}
+
+.github-sync-msg {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  min-height: 16px;
+}
+
+.github-sync-msg.error {
+  color: var(--danger);
+}
+
+.github-pat-setup {
+  display: grid;
+  gap: 8px;
+}
+
+.github-pat-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.github-pat-actions .btn-secondary {
+  flex: 1;
+  font-size: 13px;
+  min-height: 34px;
+  text-align: center;
+}
+
 label {
   display: grid;
   gap: 8px;

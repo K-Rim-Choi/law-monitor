@@ -9,6 +9,11 @@ const BILL_ERACO = "22";
 const PAGE_SIZE = 10;
 const IMPORTANCE_ORDER = { high: 0, medium: 1, low: 2 };
 const OVERRIDES_STORAGE_KEY = "law-monitor.overrides.v1";
+const GITHUB_PAT_STORAGE_KEY = "law-monitor.githubPat.v1";
+const GITHUB_REPO = "K-Rim-Choi/law-monitor";
+const GITHUB_WATCHLIST_PATH = "data/watchlist.json";
+const GITHUB_WORKFLOW_ID = "update-bills.yml";
+const GITHUB_BRANCH = "master";
 const OC_OPTIONS = ["SKI", "SKE", "SKIPC", "SKGC", "SKO", "SKE&S", "SKTI", "SKEO", "SKEN"];
 
 let overrides = {};
@@ -42,6 +47,14 @@ const els = {
   pagination: document.querySelector("#pagination"),
   importFile: document.querySelector("#importFile"),
   exportButton: document.querySelector("#exportButton"),
+  githubSyncBadge: document.querySelector("#githubSyncBadge"),
+  githubSyncMsg: document.querySelector("#githubSyncMsg"),
+  githubPatSetup: document.querySelector("#githubPatSetup"),
+  githubPatReady: document.querySelector("#githubPatReady"),
+  githubPatInput: document.querySelector("#githubPatInput"),
+  githubPatSave: document.querySelector("#githubPatSave"),
+  githubSyncNow: document.querySelector("#githubSyncNow"),
+  githubPatClear: document.querySelector("#githubPatClear"),
 };
 
 async function loadJson(url) {
@@ -284,6 +297,7 @@ async function addBillNos(value) {
   els.billNoInput.value = "";
   renderWatchlist();
   await fetchMissingBills(valid, { promptForKey: true });
+  await syncWatchlistToGithub();
   setupFilters(state.bills);
   if (invalid.length > 0) {
     els.watchlistHint.textContent = `${valid.length}건 중 ${addedCount}건 추가, ${invalid.length}건은 7자리 숫자가 아니라 제외했습니다.`;
@@ -483,6 +497,7 @@ function removeBillNo(value) {
   saveWatchlist();
   renderWatchlist();
   applyFilters();
+  syncWatchlistToGithub();
 }
 
 function renderWatchlist() {
@@ -759,6 +774,102 @@ function exportOverrides() {
   URL.revokeObjectURL(url);
 }
 
+function loadGithubPat() {
+  return localStorage.getItem(GITHUB_PAT_STORAGE_KEY) || "";
+}
+
+function saveGithubPat(pat) {
+  if (pat) localStorage.setItem(GITHUB_PAT_STORAGE_KEY, pat);
+  else localStorage.removeItem(GITHUB_PAT_STORAGE_KEY);
+}
+
+function renderGithubSyncState() {
+  const connected = !!loadGithubPat();
+  els.githubPatSetup.hidden = connected;
+  els.githubPatReady.hidden = !connected;
+  els.githubSyncBadge.textContent = connected ? "연결됨" : "미설정";
+  els.githubSyncBadge.className = `github-sync-badge${connected ? " connected" : ""}`;
+}
+
+function setGithubSyncMsg(text, type = "") {
+  els.githubSyncMsg.textContent = text;
+  els.githubSyncMsg.className = `github-sync-msg${type ? ` ${type}` : ""}`;
+  if (type === "syncing") {
+    els.githubSyncBadge.textContent = "동기화 중";
+    els.githubSyncBadge.className = "github-sync-badge syncing";
+  } else if (type === "error") {
+    els.githubSyncBadge.textContent = "오류";
+    els.githubSyncBadge.className = "github-sync-badge error";
+  } else if (text) {
+    els.githubSyncBadge.textContent = "연결됨";
+    els.githubSyncBadge.className = "github-sync-badge connected";
+  }
+}
+
+async function syncWatchlistToGithub() {
+  const pat = loadGithubPat();
+  if (!pat) return;
+
+  setGithubSyncMsg("동기화 중...", "syncing");
+
+  const headers = {
+    Authorization: `Bearer ${pat}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+
+  try {
+    // 현재 파일 SHA 조회
+    const getRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_WATCHLIST_PATH}`,
+      { headers },
+    );
+    if (getRes.status === 401) {
+      saveGithubPat("");
+      renderGithubSyncState();
+      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
+      return;
+    }
+    if (!getRes.ok) throw new Error(`GitHub API ${getRes.status}`);
+    const { sha } = await getRes.json();
+
+    // watchlist.json 업데이트
+    const newContent = JSON.stringify({ billNos: state.watchlist }, null, 2) + "\n";
+    const putRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_WATCHLIST_PATH}`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          message: `의안 목록 업데이트 (${state.watchlist.length}건)`,
+          content: btoa(newContent),
+          sha,
+          branch: GITHUB_BRANCH,
+        }),
+      },
+    );
+    if (!putRes.ok) {
+      const err = await putRes.json().catch(() => ({}));
+      throw new Error(err.message || `GitHub API ${putRes.status}`);
+    }
+
+    // 워크플로 즉시 실행
+    await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/${GITHUB_WORKFLOW_ID}/dispatches`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ref: GITHUB_BRANCH }),
+      },
+    );
+
+    setGithubSyncMsg("✓ 동기화 완료 — 1~2분 후 반영됩니다");
+  } catch (error) {
+    console.error("GitHub sync failed:", error);
+    setGithubSyncMsg(`동기화 실패: ${error.message}`, "error");
+  }
+}
+
 function importOverrides(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -926,6 +1037,23 @@ function bindEvents() {
       event.target.value = "";
     }
   });
+
+  els.githubPatSave.addEventListener("click", () => {
+    const pat = els.githubPatInput.value.trim();
+    if (!pat) return;
+    saveGithubPat(pat);
+    els.githubPatInput.value = "";
+    renderGithubSyncState();
+    setGithubSyncMsg("PAT가 저장됐습니다. 의안을 추가하면 자동으로 동기화됩니다.");
+  });
+
+  els.githubPatClear.addEventListener("click", () => {
+    saveGithubPat("");
+    renderGithubSyncState();
+    setGithubSyncMsg("");
+  });
+
+  els.githubSyncNow.addEventListener("click", () => syncWatchlistToGithub());
 }
 
 async function init() {
@@ -935,6 +1063,7 @@ async function init() {
     loadClientBills(),
   );
   overrides = loadOverrides();
+  renderGithubSyncState();
   initializeWatchlist(data);
   els.generatedAt.textContent = `마지막 갱신 ${formatDate(data.generatedAt)}`;
   els.sourceName.textContent = "SKI 정책Comm.팀";

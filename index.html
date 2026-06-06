@@ -88,6 +88,25 @@
               <button type="submit">추가</button>
             </form>
             <p id="watchlistHint" class="watchlist-hint"></p>
+
+            <div class="github-sync-section">
+              <div class="github-sync-header">
+                <h3>GitHub 동기화</h3>
+                <span id="githubSyncBadge" class="github-sync-badge">미설정</span>
+              </div>
+              <p id="githubSyncMsg" class="github-sync-msg"></p>
+              <div id="githubPatSetup" class="github-pat-setup">
+                <label>
+                  GitHub PAT
+                  <input type="password" id="githubPatInput" placeholder="github_pat_..." autocomplete="new-password">
+                </label>
+                <button type="button" id="githubPatSave">저장</button>
+              </div>
+              <div id="githubPatReady" class="github-pat-actions" hidden>
+                <button type="button" id="githubSyncNow" class="btn-secondary">지금 동기화</button>
+                <button type="button" id="githubPatClear" class="btn-secondary">PAT 삭제</button>
+              </div>
+            </div>
           </section>
         </aside>
 
