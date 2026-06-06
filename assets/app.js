@@ -220,7 +220,7 @@ function renderRows(bills) {
       <td>${escapeHtml(b.proposer || "-")}</td>
       <td>${escapeHtml(b.committee || "-")}</td>
       <td>${escapeHtml(formatDate(b.proposeDate))}</td>
-      <td>${escapeHtml(b.status || "-")}</td>
+      <td>${renderStatusCell(b.status, b.statusDate)}</td>
       <td>${renderSummaryCell(b.summary)}</td>
       <td class="remove-cell">
         <button type="button" class="remove-btn" data-bill-no="${billNo}" aria-label="${escapeHtml(b.billName || billNo)} 추적 해제">✕</button>
@@ -574,6 +574,12 @@ function toIsoDate(value) {
     ].join("-");
   }
   return text;
+}
+
+function renderStatusCell(status, statusDate) {
+  const text = escapeHtml(status || "-");
+  if (!statusDate) return text;
+  return `${text}<span class="status-date">${escapeHtml(formatDate(statusDate))}</span>`;
 }
 
 function renderSummaryCell(summary) {

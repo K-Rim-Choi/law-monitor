@@ -272,6 +272,7 @@ function normalizeBill(row) {
       "위원회",
     ]),
     status: buildStatus(row),
+    statusDate: buildStatusDate(row),
     summary: pick(row, [
       "SUMMARY",
       "MAIN_CONTENT",
@@ -284,6 +285,24 @@ function normalizeBill(row) {
       buildBillUrl(id),
     raw: row,
   };
+}
+
+const STATUS_DATE_FIELDS = [
+  "JRCMIT_CMMT_DT",
+  "JRCMIT_PRSNT_DT",
+  "JRCMIT_PROC_DT",
+  "LAW_CMMT_DT",
+  "LAW_PRSNT_DT",
+  "LAW_PROC_DT",
+  "RGS_PRSNT_DT",
+  "RGS_RSLN_DT",
+  "GVRN_TRSF_DT",
+  "PROM_DT",
+];
+
+function buildStatusDate(row) {
+  const dates = STATUS_DATE_FIELDS.map((k) => row[k]).filter(Boolean).sort();
+  return dates.at(-1) ? toIsoDate(dates.at(-1)) : null;
 }
 
 function buildStatus(row) {
