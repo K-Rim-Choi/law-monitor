@@ -9,6 +9,8 @@ const BILL_ERACO = "22";
 const PAGE_SIZE = 10;
 const IMPORTANCE_ORDER = { high: 0, medium: 1, low: 2 };
 const OVERRIDES_STORAGE_KEY = "law-monitor.overrides.v1";
+const AUTH_HASH = "b9455a18a15d9b8c23ee939d0a39be0b69bb650a8c97e24f52f3c22e84e27516";
+const AUTH_TOKEN_KEY = "law-monitor.auth.v1";
 const GITHUB_PAT_STORAGE_KEY = "law-monitor.githubPat.v1";
 const GITHUB_REPO = "K-Rim-Choi/law-monitor";
 const GITHUB_WATCHLIST_PATH = "data/watchlist.json";
@@ -1077,7 +1079,30 @@ async function init() {
   applyFilters();
 }
 
-function startApp() {
+async function hashPassword(password) {
+  const buffer = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(password),
+  );
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function isAuthenticated() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) === "ok";
+}
+
+async function authenticate(password) {
+  const hash = await hashPassword(password);
+  if (hash === AUTH_HASH) {
+    localStorage.setItem(AUTH_TOKEN_KEY, "ok");
+    return true;
+  }
+  return false;
+}
+
+function runApp() {
   init().catch((error) => {
     console.error(error);
     els.generatedAt.textContent = "데이터 로드 실패";
@@ -1086,7 +1111,7 @@ function startApp() {
       className: "retry-btn",
       textContent: "다시 시도",
     });
-    btn.addEventListener("click", startApp);
+    btn.addEventListener("click", runApp);
     els.emptyState.replaceChildren(
       Object.assign(document.createElement("span"), {
         textContent: "대시보드 데이터를 불러오지 못했습니다.",
@@ -1096,5 +1121,28 @@ function startApp() {
     els.emptyState.hidden = false;
   });
 }
+
+function startApp() {
+  if (!isAuthenticated()) {
+    document.getElementById("authPassword")?.focus();
+    return;
+  }
+  document.getElementById("authGate").hidden = true;
+  runApp();
+}
+
+document.getElementById("authForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("authPassword");
+  const ok = await authenticate(input.value);
+  if (ok) {
+    document.getElementById("authGate").hidden = true;
+    runApp();
+  } else {
+    document.getElementById("authError").hidden = false;
+    input.value = "";
+    input.focus();
+  }
+});
 
 startApp();

@@ -7,6 +7,18 @@
     <link rel="stylesheet" href="assets/styles.css">
   </head>
   <body>
+    <div id="authGate" class="auth-gate">
+      <div class="auth-card">
+        <p class="eyebrow">National Assembly Amendment Monitor</p>
+        <h1>중점관리법안 대시보드</h1>
+        <form id="authForm" class="auth-form" novalidate>
+          <input type="password" id="authPassword" placeholder="비밀번호" autocomplete="current-password">
+          <button type="submit">입장</button>
+        </form>
+        <p id="authError" class="auth-error" hidden>비밀번호가 올바르지 않습니다.</p>
+      </div>
+    </div>
+
     <header class="topbar">
       <div>
         <p class="eyebrow">National Assembly Amendment Monitor</p>
