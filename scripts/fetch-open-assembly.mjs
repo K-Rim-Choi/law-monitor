@@ -19,6 +19,8 @@ const BILL_NOS = (process.env.BILL_NOS || "")
   .filter(Boolean);
 const PAGE_SIZE = Number(process.env.PAGE_SIZE || 100);
 const MAX_PAGES = Number(process.env.MAX_PAGES || 5);
+const FETCH_RETRIES = Number(process.env.FETCH_RETRIES || 3);
+const FETCH_RETRY_DELAY_MS = Number(process.env.FETCH_RETRY_DELAY_MS || 2000);
 const FETCH_SUMMARIES = process.env.FETCH_SUMMARIES !== "false";
 const BILL_KEYWORDS = (process.env.BILL_KEYWORDS || "개정,일부개정,전부개정")
   .split(",")
@@ -139,9 +141,6 @@ async function resolveListParams(billNo = "") {
   );
   return candidates[0];
 }
-
-const FETCH_RETRIES = Number(process.env.FETCH_RETRIES || 3);
-const FETCH_RETRY_DELAY_MS = Number(process.env.FETCH_RETRY_DELAY_MS || 2000);
 
 async function fetchPage(endpoint, page, params = {}) {
   const url = new URL(endpoint);
