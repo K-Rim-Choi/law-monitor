@@ -47,10 +47,30 @@ jobs:
         run: node scripts/fetch-open-assembly.mjs
         continue-on-error: true
 
-      - name: Keep existing bills.json on fetch failure
+      - name: Persist successfully fetched bills.json
+        if: steps.fetch_bills.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/bills.json; then
+            echo "변경 사항 없음 — 커밋 생략"
+          else
+            git add data/bills.json
+            git commit -m "데이터 자동 갱신: 의안 목록 동기화 [skip ci]"
+            for attempt in 1 2 3; do
+              git fetch origin "${GITHUB_REF_NAME}" && \
+              git rebase "origin/${GITHUB_REF_NAME}" && \
+              git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              echo "푸시 실패, 재시도 ($attempt)..."
+              sleep 3
+            done
+          fi
+
+      - name: Keep last known-good bills.json on fetch failure
         if: steps.fetch_bills.outcome == 'failure'
         run: |
-          echo "API fetch failed — keeping existing bills.json"
+          echo "API fetch failed — repo의 최신 bills.json(마지막 성공 데이터)을 유지합니다"
+          git checkout -- data/bills.json || true
           if [ ! -f data/bills.json ]; then
             cp data/bills.sample.json data/bills.json
             echo "No existing bills.json found, using sample data"

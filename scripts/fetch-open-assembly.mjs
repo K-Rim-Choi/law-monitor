@@ -140,6 +140,9 @@ async function resolveListParams(billNo = "") {
   return candidates[0];
 }
 
+const FETCH_RETRIES = Number(process.env.FETCH_RETRIES || 3);
+const FETCH_RETRY_DELAY_MS = Number(process.env.FETCH_RETRY_DELAY_MS || 2000);
+
 async function fetchPage(endpoint, page, params = {}) {
   const url = new URL(endpoint);
   url.searchParams.set("KEY", API_KEY);
@@ -152,16 +155,34 @@ async function fetchPage(endpoint, page, params = {}) {
     }
   }
 
-  const response = await fetch(url).catch((error) => {
-    throw new Error(
-      `Open Assembly API request failed. Check network access and endpoint: ${error.message}`,
-    );
-  });
-  if (!response.ok) {
-    throw new Error(`Open Assembly API failed: ${response.status}`);
+  let lastError;
+  for (let attempt = 1; attempt <= FETCH_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(url).catch((error) => {
+        throw new Error(
+          `Open Assembly API request failed. Check network access and endpoint: ${error.message}`,
+        );
+      });
+      if (!response.ok) {
+        throw new Error(`Open Assembly API failed: ${response.status}`);
+      }
+      const payload = await response.json();
+      return extractRows(payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt < FETCH_RETRIES) {
+        console.warn(
+          `요청 실패 (시도 ${attempt}/${FETCH_RETRIES}): ${error.message} — ${FETCH_RETRY_DELAY_MS}ms 후 재시도`,
+        );
+        await sleep(FETCH_RETRY_DELAY_MS * attempt);
+      }
+    }
   }
-  const payload = await response.json();
-  return extractRows(payload);
+  throw lastError;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchSummaryMap(billNos) {
