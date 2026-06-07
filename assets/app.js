@@ -14,6 +14,7 @@ const AUTH_TOKEN_KEY = "law-monitor.auth.v1";
 const GITHUB_PAT_STORAGE_KEY = "law-monitor.githubPat.v1";
 const GITHUB_REPO = "K-Rim-Choi/law-monitor";
 const GITHUB_WATCHLIST_PATH = "data/watchlist.json";
+const GITHUB_BILLS_PATH = "data/bills.json";
 const GITHUB_WORKFLOW_ID = "update-bills.yml";
 const GITHUB_BRANCH = "master";
 const OC_OPTIONS = ["SKI", "SKE", "SKIPC", "SKGC", "SKO", "SKE&S", "SKTI", "SKEO", "SKEN"];
@@ -303,6 +304,7 @@ async function addBillNos(value) {
   renderWatchlist();
   await fetchMissingBills(valid, { promptForKey: true });
   await syncWatchlistToGithub();
+  await syncBillsToGithub();
   setupFilters(state.bills);
   if (invalid.length > 0) {
     els.watchlistHint.textContent = `${valid.length}건 중 ${addedCount}건 추가, ${invalid.length}건은 7자리 숫자가 아니라 제외했습니다.`;
@@ -913,6 +915,93 @@ async function syncWatchlistToGithub() {
   }
 }
 
+// 브라우저가 직접(개인 API 키로) 가져온 의안 데이터를 공용 bills.json에 반영합니다.
+// GitHub Actions 러너가 국회 Open API에 접속하지 못해 1건짜리 데이터로
+// 되돌아가는 문제를 우회하기 위해, 이미 데이터를 보유한 브라우저가
+// 곧바로 저장소의 bills.json을 갱신합니다(워치리스트 동기화와 동일한 PAT 사용).
+async function syncBillsToGithub() {
+  const pat = loadGithubPat();
+  if (!pat) return;
+
+  const watchlistSet = new Set(state.watchlist);
+  const billsToSync = state.bills.filter((bill) => watchlistSet.has(bill.billNo));
+  if (billsToSync.length === 0) return;
+
+  setGithubSyncMsg("의안 데이터 동기화 중...", "syncing");
+
+  const headers = {
+    Authorization: `Bearer ${pat}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const getRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_BILLS_PATH}`,
+      { headers },
+    );
+    if (getRes.status === 401) {
+      saveGithubPat("");
+      renderGithubSyncState();
+      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
+      return;
+    }
+
+    let sha;
+    let existing = { bills: [] };
+    if (getRes.ok) {
+      const file = await getRes.json();
+      sha = file.sha;
+      try {
+        const decoded = decodeURIComponent(
+          escape(atob(file.content.replace(/\n/g, ""))),
+        );
+        existing = JSON.parse(decoded);
+      } catch {
+        existing = { bills: [] };
+      }
+    }
+
+    // 기존 데이터와 병합 — 더 최신(또는 더 풍부한) 쪽을 유지
+    const merged = mergeBills(Array.isArray(existing.bills) ? existing.bills : [], billsToSync);
+    if (merged.length <= (existing.bills?.length || 0)) {
+      // 이미 서버 쪽 데이터가 같거나 더 많으면 굳이 덮어쓰지 않음
+      return;
+    }
+
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      source: "open.assembly.go.kr (브라우저 동기화)",
+      query: existing.query || {},
+      bills: merged,
+    };
+    const newContent = JSON.stringify(payload, null, 2) + "\n";
+
+    const putRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_BILLS_PATH}`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          message: `의안 데이터 브라우저 동기화 (${merged.length}건)`,
+          content: btoa(unescape(encodeURIComponent(newContent))),
+          sha,
+          branch: GITHUB_BRANCH,
+        }),
+      },
+    );
+    if (!putRes.ok) {
+      const err = await putRes.json().catch(() => ({}));
+      throw new Error(err.message || `GitHub API ${putRes.status}`);
+    }
+
+    setGithubSyncMsg(`✓ 의안 데이터 ${merged.length}건 동기화 완료 — 1~2분 후 모든 기기에 반영됩니다`);
+  } catch (error) {
+    console.error("Bills sync failed:", error);
+    setGithubSyncMsg(`의안 데이터 동기화 실패: ${error.message}`, "error");
+  }
+}
+
 function importOverrides(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -1126,7 +1215,10 @@ function bindEvents() {
     setGithubSyncMsg("");
   });
 
-  els.githubSyncNow.addEventListener("click", () => syncWatchlistToGithub());
+  els.githubSyncNow.addEventListener("click", async () => {
+    await syncWatchlistToGithub();
+    await syncBillsToGithub();
+  });
 }
 
 async function init() {
