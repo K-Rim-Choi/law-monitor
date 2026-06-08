@@ -15,6 +15,7 @@ const GITHUB_PAT_STORAGE_KEY = "law-monitor.githubPat.v1";
 const GITHUB_REPO = "K-Rim-Choi/law-monitor";
 const GITHUB_WATCHLIST_PATH = "data/watchlist.json";
 const GITHUB_BILLS_PATH = "data/bills.json";
+const GITHUB_OVERRIDES_PATH = "data/impact-overrides.json";
 const GITHUB_WORKFLOW_ID = "update-bills.yml";
 const GITHUB_BRANCH = "master";
 const OC_OPTIONS = ["SKI", "SKE", "SKIPC", "SKGC", "SKO", "SKE&S", "SKTI", "SKEO", "SKEN"];
@@ -662,6 +663,20 @@ function saveOverrides() {
   localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
 }
 
+// 팀 공용 편집 내용(O/C, 중요도 등)을 GitHub에서 직접 받아옵니다.
+// 워치리스트와 마찬가지로 누구나 읽을 수 있는 정적 파일이라, 다른
+// 팀원이 PAT로 동기화한 편집 내용을 새로고침만으로 받아볼 수 있습니다.
+async function loadRemoteOverrides() {
+  try {
+    const remote = await loadJson(`${GITHUB_OVERRIDES_PATH}?_=${Date.now()}`);
+    return remote && typeof remote === "object" && !Array.isArray(remote)
+      ? remote
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function getBillWithOverrides(bill) {
   const o = overrides[bill.billNo];
   return o ? { ...bill, ...o } : bill;
@@ -1027,6 +1042,92 @@ async function syncBillsToGithub() {
   }
 }
 
+// O/C·중요도 등 사용자가 표에서 직접 수정한 편집 내용(overrides)을
+// data/impact-overrides.json에 동기화합니다. 이전에는 이 편집 내용이
+// localStorage에만 저장되어 다른 팀원에게는 절대 공유되지 않았습니다.
+async function syncOverridesToGithub() {
+  const pat = loadGithubPat();
+  if (!pat) return;
+  if (Object.keys(overrides).length === 0) return;
+
+  setGithubSyncMsg("편집 내용 동기화 중...", "syncing");
+
+  const headers = {
+    Authorization: `Bearer ${pat}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+
+  try {
+    const getRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_OVERRIDES_PATH}`,
+      { headers },
+    );
+    if (getRes.status === 401) {
+      saveGithubPat("");
+      renderGithubSyncState();
+      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
+      return;
+    }
+
+    let sha;
+    let existing = {};
+    if (getRes.ok) {
+      const file = await getRes.json();
+      sha = file.sha;
+      try {
+        const decoded = decodeURIComponent(
+          escape(atob(file.content.replace(/\n/g, ""))),
+        );
+        const parsed = JSON.parse(decoded);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          existing = parsed;
+        }
+      } catch {
+        existing = {};
+      }
+    }
+
+    // 동일 의안에 대해선 "내가 방금 수정한 값"을 우선 적용하고,
+    // 그 외엔 팀원들이 동기화해 둔 값을 그대로 유지합니다.
+    const merged = { ...existing, ...overrides };
+    if (JSON.stringify(merged) === JSON.stringify(existing)) {
+      // 푸시할 새로운 변경 사항이 없으면 건너뜀
+      if (JSON.stringify(merged) !== JSON.stringify(overrides)) {
+        overrides = merged;
+        saveOverrides();
+      }
+      return;
+    }
+
+    const newContent = JSON.stringify(merged, null, 2) + "\n";
+    const putRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_OVERRIDES_PATH}`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          message: `의안별 편집 내용 동기화 (O/C·중요도 등, ${Object.keys(merged).length}건)`,
+          content: btoa(unescape(encodeURIComponent(newContent))),
+          sha,
+          branch: GITHUB_BRANCH,
+        }),
+      },
+    );
+    if (!putRes.ok) {
+      const err = await putRes.json().catch(() => ({}));
+      throw new Error(err.message || `GitHub API ${putRes.status}`);
+    }
+
+    overrides = merged;
+    saveOverrides();
+    setGithubSyncMsg(`✓ 편집 내용 ${Object.keys(merged).length}건 동기화 완료 — 1~2분 후 모든 기기에 반영됩니다`);
+  } catch (error) {
+    console.error("Overrides sync failed:", error);
+    setGithubSyncMsg(`편집 내용 동기화 실패: ${error.message}`, "error");
+  }
+}
+
 function importOverrides(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -1243,6 +1344,7 @@ function bindEvents() {
   els.githubSyncNow.addEventListener("click", async () => {
     await syncWatchlistToGithub();
     await syncBillsToGithub();
+    await syncOverridesToGithub();
   });
 }
 
@@ -1253,6 +1355,13 @@ async function init() {
     loadClientBills(),
   );
   overrides = loadOverrides();
+  const remoteOverrides = await loadRemoteOverrides();
+  if (remoteOverrides && Object.keys(remoteOverrides).length > 0) {
+    // 같은 의안에 동시 편집이 있으면 "내 로컬 편집"을 우선하고,
+    // 그 외엔 팀원들이 동기화해 둔 값을 받아옵니다.
+    overrides = { ...remoteOverrides, ...overrides };
+    saveOverrides();
+  }
   renderGithubSyncState();
   const remoteWatchlist = await loadRemoteWatchlist();
   initializeWatchlist(data, remoteWatchlist);
