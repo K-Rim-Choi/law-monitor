@@ -238,7 +238,32 @@ function renderRows(bills) {
   }
 }
 
-function initializeWatchlist(data) {
+// 공용 워치리스트(data/watchlist.json)를 직접 받아옵니다. 누구나 읽을 수 있는
+// 정적 파일이므로 PAT 없이도 항상 "팀 전체의 최신 추적 목록"을 확인할 수 있고,
+// 이를 기준으로 삼아야 한 기기의 추가/삭제가 다른 기기에도 전파됩니다.
+async function loadRemoteWatchlist() {
+  try {
+    const remote = await loadJson(`${GITHUB_WATCHLIST_PATH}?_=${Date.now()}`);
+    const billNos = Array.isArray(remote) ? remote : remote?.billNos;
+    if (!Array.isArray(billNos)) return null;
+    return uniqueBillNos(
+      billNos.map((value) => String(value).trim()).filter(Boolean),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function initializeWatchlist(data, remoteWatchlist) {
+  // 1순위: 공용(GitHub) 워치리스트 — 가져오는 데 성공했다면 이것이 항상 최신
+  // "팀 전체" 목록이므로 기준으로 삼는다(로컬에 남아있는 옛 캐시는 덮어씀).
+  if (Array.isArray(remoteWatchlist) && remoteWatchlist.length > 0) {
+    state.watchlist = remoteWatchlist;
+    saveWatchlist();
+    return;
+  }
+
+  // 2순위: 공용 목록을 못 가져온 경우(오프라인 등)에만 로컬 캐시 사용
   const saved = loadWatchlist();
   if (saved) {
     state.watchlist = saved;
@@ -1229,7 +1254,8 @@ async function init() {
   );
   overrides = loadOverrides();
   renderGithubSyncState();
-  initializeWatchlist(data);
+  const remoteWatchlist = await loadRemoteWatchlist();
+  initializeWatchlist(data, remoteWatchlist);
   els.generatedAt.textContent = `마지막 갱신 ${formatDate(data.generatedAt)}`;
   els.sourceName.textContent = "SKI 정책Comm.팀";
   setupFilters(state.bills);
