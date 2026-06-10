@@ -1500,8 +1500,8 @@ async function init() {
   const remoteOverrides = await loadRemoteOverrides();
   if (remoteOverrides && Object.keys(remoteOverrides).length > 0) {
     // 같은 의안에 동시 편집이 있으면 "내 로컬 편집"을 우선하고,
-    // 그 외엔 팀원들이 동기화해 둔 값을 받아옵니다.
-    overrides = { ...remoteOverrides, ...overrides };
+    // 그 외 필드는 팀원들이 동기화해 둔 값을 받아옵니다.
+    overrides = mergeOverridePatches(remoteOverrides, overrides);
     saveOverrides();
   }
   renderGithubSyncState();
