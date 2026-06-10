@@ -3,6 +3,8 @@ name: Update bills and deploy Pages
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - "data/impact-overrides.json"
   schedule:
     - cron: "0 22 * * *"
   workflow_dispatch:

@@ -19,8 +19,14 @@ const GITHUB_OVERRIDES_PATH = "data/impact-overrides.json";
 const GITHUB_WORKFLOW_ID = "update-bills.yml";
 const GITHUB_BRANCH = "master";
 const OC_OPTIONS = ["SKI", "SKE", "SKIPC", "SKGC", "SKO", "SKE&S", "SKTI", "SKEO", "SKEN"];
+const OVERRIDES_SYNC_DEBOUNCE_MS = 800;
 
 let overrides = {};
+let dirtyOverridePatch = {};
+let overridesSyncTimer = null;
+let overridesSyncInFlight = null;
+let watchlistDirty = false;
+let billsDirty = false;
 
 const state = {
   bills: [],
@@ -42,6 +48,7 @@ const els = {
   emptyState: document.querySelector("#emptyState"),
   search: document.querySelector("#searchInput"),
   importance: document.querySelector("#importanceFilter"),
+  oc: document.querySelector("#ocFilter"),
   status: document.querySelector("#statusFilter"),
   impact: document.querySelector("#impactFilter"),
   reset: document.querySelector("#resetButton"),
@@ -147,7 +154,18 @@ function fillSelect(select, values) {
   select.value = values.includes(current) ? current : "all";
 }
 
+function splitOcValues(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function setupFilters(bills) {
+  fillSelect(
+    els.oc,
+    uniqueSorted(bills.flatMap((bill) => splitOcValues(getBillWithOverrides(bill).oc))),
+  );
   fillSelect(els.status, uniqueSorted(bills.map((bill) => bill.status)));
   fillSelect(els.impact, uniqueSorted(bills.map((bill) => bill.impactArea)));
 }
@@ -170,6 +188,7 @@ function billMatchesSearch(bill, term) {
 function applyFilters() {
   const term = normalizeText(els.search.value);
   const importance = els.importance.value;
+  const oc = els.oc.value;
   const status = els.status.value;
   const impact = els.impact.value;
   const watchlistSet = new Set(state.watchlist);
@@ -184,6 +203,7 @@ function applyFilters() {
     return (
       billMatchesSearch(b, term) &&
       (importance === "all" || b.importance === importance) &&
+      (oc === "all" || splitOcValues(b.oc).includes(oc)) &&
       (status === "all" || b.status === status) &&
       (impact === "all" || b.impactArea === impact)
     );
@@ -244,14 +264,23 @@ function renderRows(bills) {
 // 이를 기준으로 삼아야 한 기기의 추가/삭제가 다른 기기에도 전파됩니다.
 async function loadRemoteWatchlist() {
   try {
-    const remote = await loadJson(`${GITHUB_WATCHLIST_PATH}?_=${Date.now()}`);
+    const { data: remote } = await getGithubJsonFile(GITHUB_WATCHLIST_PATH, { billNos: [] }, { pat: "" });
     const billNos = Array.isArray(remote) ? remote : remote?.billNos;
     if (!Array.isArray(billNos)) return null;
     return uniqueBillNos(
       billNos.map((value) => String(value).trim()).filter(Boolean),
     );
   } catch {
-    return null;
+    try {
+      const remote = await loadJson(`${GITHUB_WATCHLIST_PATH}?_=${Date.now()}`);
+      const billNos = Array.isArray(remote) ? remote : remote?.billNos;
+      if (!Array.isArray(billNos)) return null;
+      return uniqueBillNos(
+        billNos.map((value) => String(value).trim()).filter(Boolean),
+      );
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -326,6 +355,7 @@ async function addBillNos(value) {
   state.watchlist = uniqueBillNos([...state.watchlist, ...valid]);
   const addedCount = state.watchlist.length - beforeCount;
   saveWatchlist();
+  if (addedCount > 0) watchlistDirty = true;
   els.billNoInput.value = "";
   renderWatchlist();
   await fetchMissingBills(valid, { promptForKey: true });
@@ -368,6 +398,7 @@ async function fetchMissingBills(billNos, options = {}) {
   if (fetchedBills.length > 0) {
     state.bills = mergeBills(state.bills, fetchedBills);
     saveClientBills();
+    billsDirty = true;
     renderWatchlist();
     const failedCount = missingBillNos.length - fetchedBills.length;
     els.watchlistHint.textContent =
@@ -528,6 +559,7 @@ function mergeBills(currentBills, newBills) {
 function removeBillNo(value) {
   state.watchlist = state.watchlist.filter((billNo) => billNo !== value);
   saveWatchlist();
+  watchlistDirty = true;
   renderWatchlist();
   applyFilters();
   syncWatchlistToGithub();
@@ -645,6 +677,7 @@ function escapeHtml(value) {
 function resetFilters() {
   els.search.value = "";
   els.importance.value = "all";
+  els.oc.value = "all";
   els.status.value = "all";
   els.impact.value = "all";
   applyFilters();
@@ -663,17 +696,128 @@ function saveOverrides() {
   localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(overrides));
 }
 
+function markOverrideDirty(billNo, field, value) {
+  if (!dirtyOverridePatch[billNo]) dirtyOverridePatch[billNo] = {};
+  dirtyOverridePatch[billNo][field] = value;
+}
+
+function hasDirtyOverrides() {
+  return Object.keys(dirtyOverridePatch).length > 0;
+}
+
+function queueOverridesSync() {
+  if (!loadGithubPat()) return;
+  window.clearTimeout(overridesSyncTimer);
+  setGithubSyncMsg("편집 내용 저장됨 — GitHub 동기화 대기 중");
+  overridesSyncTimer = window.setTimeout(() => {
+    syncOverridesToGithub();
+  }, OVERRIDES_SYNC_DEBOUNCE_MS);
+}
+
+function mergeOverridePatches(...patches) {
+  const merged = {};
+  patches.forEach((patch) => {
+    Object.entries(patch || {}).forEach(([billNo, fields]) => {
+      if (!fields || typeof fields !== "object" || Array.isArray(fields)) return;
+      if (!merged[billNo]) merged[billNo] = {};
+      Object.assign(merged[billNo], fields);
+    });
+  });
+  return merged;
+}
+
+function applyOverridePatch(base, patch) {
+  const merged = JSON.parse(JSON.stringify(base || {}));
+  Object.entries(patch || {}).forEach(([billNo, fields]) => {
+    if (!fields || typeof fields !== "object" || Array.isArray(fields)) return;
+    if (!merged[billNo] || typeof merged[billNo] !== "object" || Array.isArray(merged[billNo])) {
+      merged[billNo] = {};
+    }
+    Object.entries(fields).forEach(([field, value]) => {
+      if (value === null) delete merged[billNo][field];
+      else merged[billNo][field] = value;
+    });
+    if (Object.keys(merged[billNo]).length === 0) delete merged[billNo];
+  });
+  return merged;
+}
+
+function createGithubHeaders(pat = loadGithubPat()) {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+  };
+  if (pat) headers.Authorization = `Bearer ${pat}`;
+  return headers;
+}
+
+function getGithubContentUrl(path) {
+  const url = new URL(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`);
+  url.searchParams.set("ref", GITHUB_BRANCH);
+  return url.toString();
+}
+
+function decodeBase64Utf8(content) {
+  const binary = atob(String(content || "").replace(/\n/g, ""));
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function encodeBase64Utf8(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+async function getGithubJsonFile(path, fallback, options = {}) {
+  const { pat = loadGithubPat() } = options;
+  const response = await fetch(getGithubContentUrl(path), {
+    headers: createGithubHeaders(pat),
+    cache: "no-store",
+  });
+  if (response.status === 404) return { sha: undefined, data: fallback, text: "" };
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const error = new Error(err.message || `GitHub API ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  const file = await response.json();
+  const text = decodeBase64Utf8(file.content);
+  return {
+    sha: file.sha,
+    data: JSON.parse(text),
+    text,
+  };
+}
+
+function handleGithubAuthError() {
+  saveGithubPat("");
+  renderGithubSyncState();
+  setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
+}
+
 // 팀 공용 편집 내용(O/C, 중요도 등)을 GitHub에서 직접 받아옵니다.
 // 워치리스트와 마찬가지로 누구나 읽을 수 있는 정적 파일이라, 다른
 // 팀원이 PAT로 동기화한 편집 내용을 새로고침만으로 받아볼 수 있습니다.
 async function loadRemoteOverrides() {
   try {
-    const remote = await loadJson(`${GITHUB_OVERRIDES_PATH}?_=${Date.now()}`);
+    const { data: remote } = await getGithubJsonFile(GITHUB_OVERRIDES_PATH, {}, { pat: "" });
     return remote && typeof remote === "object" && !Array.isArray(remote)
       ? remote
       : null;
   } catch {
-    return null;
+    try {
+      const remote = await loadJson(`${GITHUB_OVERRIDES_PATH}?_=${Date.now()}`);
+      return remote && typeof remote === "object" && !Array.isArray(remote)
+        ? remote
+        : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -685,18 +829,22 @@ function getBillWithOverrides(bill) {
 function setOverride(billNo, field, value) {
   if (!overrides[billNo]) overrides[billNo] = {};
   overrides[billNo][field] = value;
+  markOverrideDirty(billNo, field, value);
   saveOverrides();
   setupFilters(state.bills);
   applyFilters();
+  queueOverridesSync();
 }
 
 function clearOverride(billNo, field) {
   if (!overrides[billNo]) return;
   delete overrides[billNo][field];
   if (Object.keys(overrides[billNo]).length === 0) delete overrides[billNo];
+  markOverrideDirty(billNo, field, null);
   saveOverrides();
   setupFilters(state.bills);
   applyFilters();
+  queueOverridesSync();
 }
 
 function openImportanceEditor(cell) {
@@ -891,32 +1039,31 @@ function setGithubSyncMsg(text, type = "") {
   }
 }
 
-async function syncWatchlistToGithub() {
+async function syncWatchlistToGithub(options = {}) {
+  const { force = false } = options;
   const pat = loadGithubPat();
   if (!pat) return;
+  if (!force && !watchlistDirty) return;
 
   setGithubSyncMsg("동기화 중...", "syncing");
-
-  const headers = {
-    Authorization: `Bearer ${pat}`,
-    Accept: "application/vnd.github+json",
-    "Content-Type": "application/json",
-  };
+  const headers = createGithubHeaders(pat);
 
   try {
-    // 현재 파일 SHA 조회
-    const getRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_WATCHLIST_PATH}`,
-      { headers },
+    const { sha, data: existing } = await getGithubJsonFile(
+      GITHUB_WATCHLIST_PATH,
+      { billNos: [] },
+      { pat },
     );
-    if (getRes.status === 401) {
-      saveGithubPat("");
-      renderGithubSyncState();
-      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
+    const existingBillNos = uniqueBillNos(
+      (Array.isArray(existing) ? existing : existing?.billNos || [])
+        .map((value) => String(value).trim())
+        .filter(Boolean),
+    );
+    if (JSON.stringify(existingBillNos) === JSON.stringify(state.watchlist)) {
+      watchlistDirty = false;
+      setGithubSyncMsg("추적 목록 변경 사항 없음");
       return;
     }
-    if (!getRes.ok) throw new Error(`GitHub API ${getRes.status}`);
-    const { sha } = await getRes.json();
 
     // watchlist.json 업데이트
     const newContent = JSON.stringify({ billNos: state.watchlist }, null, 2) + "\n";
@@ -927,7 +1074,7 @@ async function syncWatchlistToGithub() {
         headers,
         body: JSON.stringify({
           message: `의안 목록 업데이트 (${state.watchlist.length}건)`,
-          content: btoa(newContent),
+          content: encodeBase64Utf8(newContent),
           sha,
           branch: GITHUB_BRANCH,
         }),
@@ -935,7 +1082,9 @@ async function syncWatchlistToGithub() {
     );
     if (!putRes.ok) {
       const err = await putRes.json().catch(() => ({}));
-      throw new Error(err.message || `GitHub API ${putRes.status}`);
+      const error = new Error(err.message || `GitHub API ${putRes.status}`);
+      error.status = putRes.status;
+      throw error;
     }
 
     // 워크플로 즉시 실행
@@ -948,8 +1097,13 @@ async function syncWatchlistToGithub() {
       },
     );
 
+    watchlistDirty = false;
     setGithubSyncMsg("✓ 동기화 완료 — 1~2분 후 반영됩니다");
   } catch (error) {
+    if (error.status === 401) {
+      handleGithubAuthError();
+      return;
+    }
     console.error("GitHub sync failed:", error);
     setGithubSyncMsg(`동기화 실패: ${error.message}`, "error");
   }
@@ -959,53 +1113,31 @@ async function syncWatchlistToGithub() {
 // GitHub Actions 러너가 국회 Open API에 접속하지 못해 1건짜리 데이터로
 // 되돌아가는 문제를 우회하기 위해, 이미 데이터를 보유한 브라우저가
 // 곧바로 저장소의 bills.json을 갱신합니다(워치리스트 동기화와 동일한 PAT 사용).
-async function syncBillsToGithub() {
+async function syncBillsToGithub(options = {}) {
+  const { force = false } = options;
   const pat = loadGithubPat();
   if (!pat) return;
+  if (!force && !billsDirty) return;
 
   const watchlistSet = new Set(state.watchlist);
   const billsToSync = state.bills.filter((bill) => watchlistSet.has(bill.billNo));
   if (billsToSync.length === 0) return;
 
   setGithubSyncMsg("의안 데이터 동기화 중...", "syncing");
-
-  const headers = {
-    Authorization: `Bearer ${pat}`,
-    Accept: "application/vnd.github+json",
-    "Content-Type": "application/json",
-  };
+  const headers = createGithubHeaders(pat);
 
   try {
-    const getRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_BILLS_PATH}`,
-      { headers },
+    const { sha, data: existing } = await getGithubJsonFile(
+      GITHUB_BILLS_PATH,
+      { bills: [] },
+      { pat },
     );
-    if (getRes.status === 401) {
-      saveGithubPat("");
-      renderGithubSyncState();
-      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
-      return;
-    }
-
-    let sha;
-    let existing = { bills: [] };
-    if (getRes.ok) {
-      const file = await getRes.json();
-      sha = file.sha;
-      try {
-        const decoded = decodeURIComponent(
-          escape(atob(file.content.replace(/\n/g, ""))),
-        );
-        existing = JSON.parse(decoded);
-      } catch {
-        existing = { bills: [] };
-      }
-    }
 
     // 기존 데이터와 병합 — 더 최신(또는 더 풍부한) 쪽을 유지
     const merged = mergeBills(Array.isArray(existing.bills) ? existing.bills : [], billsToSync);
-    if (merged.length <= (existing.bills?.length || 0)) {
-      // 이미 서버 쪽 데이터가 같거나 더 많으면 굳이 덮어쓰지 않음
+    if (JSON.stringify(merged) === JSON.stringify(existing.bills || [])) {
+      billsDirty = false;
+      setGithubSyncMsg("의안 데이터 변경 사항 없음");
       return;
     }
 
@@ -1024,7 +1156,7 @@ async function syncBillsToGithub() {
         headers,
         body: JSON.stringify({
           message: `의안 데이터 브라우저 동기화 (${merged.length}건)`,
-          content: btoa(unescape(encodeURIComponent(newContent))),
+          content: encodeBase64Utf8(newContent),
           sha,
           branch: GITHUB_BRANCH,
         }),
@@ -1032,11 +1164,18 @@ async function syncBillsToGithub() {
     );
     if (!putRes.ok) {
       const err = await putRes.json().catch(() => ({}));
-      throw new Error(err.message || `GitHub API ${putRes.status}`);
+      const error = new Error(err.message || `GitHub API ${putRes.status}`);
+      error.status = putRes.status;
+      throw error;
     }
 
+    billsDirty = false;
     setGithubSyncMsg(`✓ 의안 데이터 ${merged.length}건 동기화 완료 — 1~2분 후 모든 기기에 반영됩니다`);
   } catch (error) {
+    if (error.status === 401) {
+      handleGithubAuthError();
+      return;
+    }
     console.error("Bills sync failed:", error);
     setGithubSyncMsg(`의안 데이터 동기화 실패: ${error.message}`, "error");
   }
@@ -1045,52 +1184,46 @@ async function syncBillsToGithub() {
 // O/C·중요도 등 사용자가 표에서 직접 수정한 편집 내용(overrides)을
 // data/impact-overrides.json에 동기화합니다. 이전에는 이 편집 내용이
 // localStorage에만 저장되어 다른 팀원에게는 절대 공유되지 않았습니다.
-async function syncOverridesToGithub() {
+function syncOverridesToGithub(options = {}) {
+  if (overridesSyncInFlight) return overridesSyncInFlight;
+
+  overridesSyncInFlight = syncOverridesToGithubNow(options)
+    .finally(() => {
+      overridesSyncInFlight = null;
+      if (hasDirtyOverrides()) queueOverridesSync();
+    });
+
+  return overridesSyncInFlight;
+}
+
+async function syncOverridesToGithubNow(options = {}) {
+  const { force = false } = options;
   const pat = loadGithubPat();
   if (!pat) return;
-  if (Object.keys(overrides).length === 0) return;
+  if (!force && !hasDirtyOverrides()) return;
+  if (force && Object.keys(overrides).length === 0 && !hasDirtyOverrides()) return;
 
+  window.clearTimeout(overridesSyncTimer);
   setGithubSyncMsg("편집 내용 동기화 중...", "syncing");
-
-  const headers = {
-    Authorization: `Bearer ${pat}`,
-    Accept: "application/vnd.github+json",
-    "Content-Type": "application/json",
-  };
+  const headers = createGithubHeaders(pat);
+  const patch = force
+    ? mergeOverridePatches(overrides, dirtyOverridePatch)
+    : dirtyOverridePatch;
+  dirtyOverridePatch = {};
 
   try {
-    const getRes = await fetch(
-      `https://api.github.com/repos/${GITHUB_REPO}/contents/${GITHUB_OVERRIDES_PATH}`,
-      { headers },
+    const { sha, data } = await getGithubJsonFile(
+      GITHUB_OVERRIDES_PATH,
+      {},
+      { pat },
     );
-    if (getRes.status === 401) {
-      saveGithubPat("");
-      renderGithubSyncState();
-      setGithubSyncMsg("PAT가 유효하지 않습니다. 다시 입력해주세요.", "error");
-      return;
-    }
-
-    let sha;
-    let existing = {};
-    if (getRes.ok) {
-      const file = await getRes.json();
-      sha = file.sha;
-      try {
-        const decoded = decodeURIComponent(
-          escape(atob(file.content.replace(/\n/g, ""))),
-        );
-        const parsed = JSON.parse(decoded);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = {};
-      }
-    }
+    const existing = data && typeof data === "object" && !Array.isArray(data)
+      ? data
+      : {};
 
     // 동일 의안에 대해선 "내가 방금 수정한 값"을 우선 적용하고,
     // 그 외엔 팀원들이 동기화해 둔 값을 그대로 유지합니다.
-    const merged = { ...existing, ...overrides };
+    const merged = applyOverridePatch(existing, patch);
     if (JSON.stringify(merged) === JSON.stringify(existing)) {
       // 푸시할 새로운 변경 사항이 없으면 건너뜀
       if (JSON.stringify(merged) !== JSON.stringify(overrides)) {
@@ -1108,7 +1241,7 @@ async function syncOverridesToGithub() {
         headers,
         body: JSON.stringify({
           message: `의안별 편집 내용 동기화 (O/C·중요도 등, ${Object.keys(merged).length}건)`,
-          content: btoa(unescape(encodeURIComponent(newContent))),
+          content: encodeBase64Utf8(newContent),
           sha,
           branch: GITHUB_BRANCH,
         }),
@@ -1116,13 +1249,20 @@ async function syncOverridesToGithub() {
     );
     if (!putRes.ok) {
       const err = await putRes.json().catch(() => ({}));
-      throw new Error(err.message || `GitHub API ${putRes.status}`);
+      const error = new Error(err.message || `GitHub API ${putRes.status}`);
+      error.status = putRes.status;
+      throw error;
     }
 
     overrides = merged;
     saveOverrides();
-    setGithubSyncMsg(`✓ 편집 내용 ${Object.keys(merged).length}건 동기화 완료 — 1~2분 후 모든 기기에 반영됩니다`);
+    setGithubSyncMsg(`✓ 편집 내용 ${Object.keys(merged).length}건 동기화 완료`);
   } catch (error) {
+    dirtyOverridePatch = mergeOverridePatches(patch, dirtyOverridePatch);
+    if (error.status === 401) {
+      handleGithubAuthError();
+      return;
+    }
     console.error("Overrides sync failed:", error);
     setGithubSyncMsg(`편집 내용 동기화 실패: ${error.message}`, "error");
   }
@@ -1135,9 +1275,11 @@ function importOverrides(file) {
       const parsed = JSON.parse(e.target.result);
       if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
       overrides = { ...overrides, ...parsed };
+      dirtyOverridePatch = mergeOverridePatches(dirtyOverridePatch, parsed);
       saveOverrides();
       setupFilters(state.bills);
       applyFilters();
+      queueOverridesSync();
     } catch {
       console.warn("잘못된 override 파일 형식");
     }
@@ -1235,7 +1377,7 @@ function updateSortHeaders() {
 }
 
 function bindEvents() {
-  [els.search, els.importance, els.status, els.impact].forEach((control) => {
+  [els.search, els.importance, els.oc, els.status, els.impact].forEach((control) => {
     control.addEventListener("input", applyFilters);
     control.addEventListener("change", applyFilters);
   });
@@ -1344,7 +1486,7 @@ function bindEvents() {
   els.githubSyncNow.addEventListener("click", async () => {
     await syncWatchlistToGithub();
     await syncBillsToGithub();
-    await syncOverridesToGithub();
+    await syncOverridesToGithub({ force: true });
   });
 }
 
