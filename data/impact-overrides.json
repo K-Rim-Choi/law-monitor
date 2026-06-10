@@ -92,7 +92,8 @@
     "oc": "SKE, SKIPC"
   },
   "2215728": {
-    "oc": "SKE&S"
+    "oc": "SKE&S",
+    "importance": "high"
   },
   "2215820": {
     "oc": "SKE"
