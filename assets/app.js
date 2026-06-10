@@ -33,16 +33,26 @@ const state = {
   filtered: [],
   watchlist: [],
   sort: { column: "proposeDate", direction: "desc" },
+  summaryFilter: { field: "", value: "" },
   page: 1,
 };
 
 const els = {
+  summaryGrid: document.querySelector(".summary-grid"),
   generatedAt: document.querySelector("#generatedAt"),
   sourceName: document.querySelector("#sourceName"),
   totalCount: document.querySelector("#totalCount"),
   highCount: document.querySelector("#highCount"),
-  reviewCount: document.querySelector("#reviewCount"),
-  recentCount: document.querySelector("#recentCount"),
+  recent7Count: document.querySelector("#recent7Count"),
+  unassignedCount: document.querySelector("#unassignedCount"),
+  ocTotalCount: document.querySelector("#ocTotalCount"),
+  importanceTotalCount: document.querySelector("#importanceTotalCount"),
+  committeeTotalCount: document.querySelector("#committeeTotalCount"),
+  statusTotalCount: document.querySelector("#statusTotalCount"),
+  ocBreakdown: document.querySelector("#ocBreakdown"),
+  importanceBreakdown: document.querySelector("#importanceBreakdown"),
+  committeeBreakdown: document.querySelector("#committeeBreakdown"),
+  statusBreakdown: document.querySelector("#statusBreakdown"),
   resultCount: document.querySelector("#resultCount"),
   rows: document.querySelector("#billRows"),
   emptyState: document.querySelector("#emptyState"),
@@ -121,17 +131,50 @@ function isRecent(dateValue) {
   return days >= 0 && days <= 30;
 }
 
+function isRecentWithin(dateValue, limitDays) {
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return false;
+  const days = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+  return days >= 0 && days <= limitDays;
+}
+
 function updateSummary(bills) {
-  els.totalCount.textContent = bills.length.toLocaleString("ko-KR");
-  els.highCount.textContent = bills
-    .filter((bill) => getBillWithOverrides(bill).importance === "high")
+  const enriched = bills.map(getBillWithOverrides);
+  const ocEntries = enriched.flatMap((bill) => splitOcValues(bill.oc));
+
+  els.totalCount.textContent = enriched.length.toLocaleString("ko-KR");
+  els.highCount.textContent = enriched
+    .filter((bill) => bill.importance === "high")
     .length.toLocaleString("ko-KR");
-  els.reviewCount.textContent = bills
-    .filter((bill) => isUnderReview(bill.status))
+  els.recent7Count.textContent = enriched
+    .filter((bill) => isRecentWithin(bill.proposeDate, 7))
     .length.toLocaleString("ko-KR");
-  els.recentCount.textContent = bills
-    .filter((bill) => isRecent(bill.proposeDate))
+  els.unassignedCount.textContent = enriched
+    .filter(needsDataCleanup)
     .length.toLocaleString("ko-KR");
+  els.ocTotalCount.textContent = ocEntries.length.toLocaleString("ko-KR");
+  els.importanceTotalCount.textContent = enriched.length.toLocaleString("ko-KR");
+  els.committeeTotalCount.textContent = enriched.length.toLocaleString("ko-KR");
+  els.statusTotalCount.textContent = enriched.length.toLocaleString("ko-KR");
+
+  renderBreakdown(els.ocBreakdown, countValues(ocEntries), {
+    emptyText: "O/C 미지정",
+    filterField: "oc",
+    limit: 6,
+  });
+  renderBreakdown(els.importanceBreakdown, countValues(enriched.map((bill) => bill.importance || "unset")), {
+    formatter: getImportanceLabel,
+    filterField: "importance",
+    limit: 4,
+  });
+  renderBreakdown(els.committeeBreakdown, countValues(enriched.map((bill) => bill.committee || "소관위원회 확인 필요")), {
+    filterField: "committee",
+    limit: 5,
+  });
+  renderBreakdown(els.statusBreakdown, countValues(enriched.map((bill) => getStatusGroup(bill.status))), {
+    filterField: "statusGroup",
+    limit: 4,
+  });
 }
 
 function uniqueSorted(values) {
@@ -161,6 +204,78 @@ function splitOcValues(value) {
     .filter(Boolean);
 }
 
+function needsDataCleanup(bill) {
+  return (
+    splitOcValues(bill.oc).length === 0 ||
+    !bill.committee ||
+    bill.committee.includes("확인 필요") ||
+    !bill.importance ||
+    bill.importance === "unset"
+  );
+}
+
+function getStatusGroup(status) {
+  const text = normalizeText(status);
+  if (!text || text.includes("확인 필요")) return "상태 확인 필요";
+  if (/(가결|통과|대안반영|공포|정부이송|철회|폐기|부결)/.test(text)) {
+    return "처리 완료";
+  }
+  if (isUnderReview(status)) return "심사 중";
+  return "기타";
+}
+
+function countValues(values) {
+  const counts = new Map();
+  values.filter(Boolean).forEach((value) => {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko-KR"));
+}
+
+function renderBreakdown(container, counts, options = {}) {
+  const {
+    emptyText = "데이터 없음",
+    formatter = (value) => value,
+    filterField = "",
+    limit = 5,
+  } = options;
+
+  container.replaceChildren();
+  if (counts.length === 0) {
+    container.append(
+      Object.assign(document.createElement("p"), {
+        className: "breakdown-empty",
+        textContent: emptyText,
+      }),
+    );
+    return;
+  }
+
+  const maxCount = Math.max(...counts.map(([, count]) => count), 1);
+  counts.slice(0, limit).forEach(([value, count]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "breakdown-row";
+    button.dataset.filterField = filterField;
+    button.dataset.filterValue = value;
+    if (isSummaryBreakdownActive(filterField, value)) {
+      button.classList.add("active");
+    }
+    button.innerHTML = `
+      <span class="breakdown-label">${escapeHtml(formatter(value))}</span>
+      <span class="breakdown-bar" style="--bar-width: ${(count / maxCount) * 100}%"></span>
+      <strong>${count.toLocaleString("ko-KR")}</strong>
+    `;
+    container.append(button);
+  });
+}
+
+function isSummaryBreakdownActive(field, value) {
+  if (field === "oc") return els.oc.value === value;
+  if (field === "importance") return els.importance.value === value;
+  return state.summaryFilter.field === field && state.summaryFilter.value === value;
+}
+
 function setupFilters(bills) {
   fillSelect(
     els.oc,
@@ -185,6 +300,30 @@ function billMatchesSearch(bill, term) {
   return haystack.includes(term);
 }
 
+function matchesSummaryFilter(bill) {
+  const { field, value } = state.summaryFilter;
+  if (!field || !value) return true;
+  if (field === "committee") return (bill.committee || "소관위원회 확인 필요") === value;
+  if (field === "statusGroup") return getStatusGroup(bill.status) === value;
+  return true;
+}
+
+function clearSummaryFilter() {
+  state.summaryFilter = { field: "", value: "" };
+}
+
+function applySummaryBreakdownFilter(field, value) {
+  clearSummaryFilter();
+  if (field === "oc") {
+    els.oc.value = value;
+  } else if (field === "importance") {
+    els.importance.value = value;
+  } else if (field === "committee" || field === "statusGroup") {
+    state.summaryFilter = { field, value };
+  }
+  applyFilters();
+}
+
 function applyFilters() {
   const term = normalizeText(els.search.value);
   const importance = els.importance.value;
@@ -205,7 +344,8 @@ function applyFilters() {
       (importance === "all" || b.importance === importance) &&
       (oc === "all" || splitOcValues(b.oc).includes(oc)) &&
       (status === "all" || b.status === status) &&
-      (impact === "all" || b.impactArea === impact)
+      (impact === "all" || b.impactArea === impact) &&
+      matchesSummaryFilter(b)
     );
   });
 
@@ -680,6 +820,7 @@ function resetFilters() {
   els.oc.value = "all";
   els.status.value = "all";
   els.impact.value = "all";
+  clearSummaryFilter();
   applyFilters();
 }
 
@@ -1378,10 +1519,22 @@ function updateSortHeaders() {
 
 function bindEvents() {
   [els.search, els.importance, els.oc, els.status, els.impact].forEach((control) => {
-    control.addEventListener("input", applyFilters);
-    control.addEventListener("change", applyFilters);
+    control.addEventListener("input", () => {
+      clearSummaryFilter();
+      applyFilters();
+    });
+    control.addEventListener("change", () => {
+      clearSummaryFilter();
+      applyFilters();
+    });
   });
   els.reset.addEventListener("click", resetFilters);
+  els.summaryGrid.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const row = event.target.closest(".breakdown-row");
+    if (!row) return;
+    applySummaryBreakdownFilter(row.dataset.filterField, row.dataset.filterValue);
+  });
   document.querySelectorAll("th[data-sort]").forEach((th) => {
     th.addEventListener("click", () => {
       const col = th.dataset.sort;

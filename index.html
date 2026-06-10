@@ -33,7 +33,7 @@
     <main>
       <section class="summary-grid" aria-label="요약 지표">
         <article class="metric">
-          <span>전체 개정안</span>
+          <span>전체 F/up 의안</span>
           <strong id="totalCount">0</strong>
         </article>
         <article class="metric urgent">
@@ -41,12 +41,40 @@
           <strong id="highCount">0</strong>
         </article>
         <article class="metric">
-          <span>심사 중</span>
-          <strong id="reviewCount">0</strong>
+          <span>최근 7일 신규</span>
+          <strong id="recent7Count">0</strong>
         </article>
         <article class="metric">
-          <span>최근 30일</span>
-          <strong id="recentCount">0</strong>
+          <span>미지정/확인 필요</span>
+          <strong id="unassignedCount">0</strong>
+        </article>
+        <article class="metric breakdown">
+          <div class="metric-head">
+            <span>O/C별</span>
+            <strong id="ocTotalCount">0</strong>
+          </div>
+          <div id="ocBreakdown" class="breakdown-list"></div>
+        </article>
+        <article class="metric breakdown">
+          <div class="metric-head">
+            <span>중요도별</span>
+            <strong id="importanceTotalCount">0</strong>
+          </div>
+          <div id="importanceBreakdown" class="breakdown-list"></div>
+        </article>
+        <article class="metric breakdown">
+          <div class="metric-head">
+            <span>소관위원회 Top 5</span>
+            <strong id="committeeTotalCount">0</strong>
+          </div>
+          <div id="committeeBreakdown" class="breakdown-list"></div>
+        </article>
+        <article class="metric breakdown">
+          <div class="metric-head">
+            <span>심사 단계</span>
+            <strong id="statusTotalCount">0</strong>
+          </div>
+          <div id="statusBreakdown" class="breakdown-list"></div>
         </article>
       </section>
 
