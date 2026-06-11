@@ -60,7 +60,6 @@ const els = {
   importance: document.querySelector("#importanceFilter"),
   oc: document.querySelector("#ocFilter"),
   status: document.querySelector("#statusFilter"),
-  impact: document.querySelector("#impactFilter"),
   reset: document.querySelector("#resetButton"),
   watchlistForm: document.querySelector("#watchlistForm"),
   billNoInput: document.querySelector("#billNoInput"),
@@ -282,7 +281,6 @@ function setupFilters(bills) {
     uniqueSorted(bills.flatMap((bill) => splitOcValues(getBillWithOverrides(bill).oc))),
   );
   fillSelect(els.status, uniqueSorted(bills.map((bill) => bill.status)));
-  fillSelect(els.impact, uniqueSorted(bills.map((bill) => bill.impactArea)));
 }
 
 function billMatchesSearch(bill, term) {
@@ -329,7 +327,6 @@ function applyFilters() {
   const importance = els.importance.value;
   const oc = els.oc.value;
   const status = els.status.value;
-  const impact = els.impact.value;
   const watchlistSet = new Set(state.watchlist);
   const visibleBills = state.bills.filter((bill) =>
     watchlistSet.has(bill.billNo),
@@ -344,7 +341,6 @@ function applyFilters() {
       (importance === "all" || b.importance === importance) &&
       (oc === "all" || splitOcValues(b.oc).includes(oc)) &&
       (status === "all" || b.status === status) &&
-      (impact === "all" || b.impactArea === impact) &&
       matchesSummaryFilter(b)
     );
   });
@@ -819,7 +815,6 @@ function resetFilters() {
   els.importance.value = "all";
   els.oc.value = "all";
   els.status.value = "all";
-  els.impact.value = "all";
   clearSummaryFilter();
   applyFilters();
 }
@@ -1518,7 +1513,7 @@ function updateSortHeaders() {
 }
 
 function bindEvents() {
-  [els.search, els.importance, els.oc, els.status, els.impact].forEach((control) => {
+  [els.search, els.importance, els.oc, els.status].forEach((control) => {
     control.addEventListener("input", () => {
       clearSummaryFilter();
       applyFilters();
