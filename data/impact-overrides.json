@@ -208,7 +208,8 @@
     "oc": "SKO"
   },
   "2220775": {
-    "oc": "SKI"
+    "oc": "SKI",
+    "importance": "high"
   },
   "2220862": {
     "oc": "SKO",
