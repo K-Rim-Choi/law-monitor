@@ -26,6 +26,18 @@ const BILL_KEYWORDS = (process.env.BILL_KEYWORDS || "개정,일부개정,전부�
   .split(",")
   .map((word) => word.trim())
   .filter(Boolean);
+const STATUS_DATE_FIELDS = [
+  "JRCMIT_CMMT_DT",
+  "JRCMIT_PRSNT_DT",
+  "JRCMIT_PROC_DT",
+  "LAW_CMMT_DT",
+  "LAW_PRSNT_DT",
+  "LAW_PROC_DT",
+  "RGS_PRSNT_DT",
+  "RGS_RSLN_DT",
+  "GVRN_TRSF_DT",
+  "PROM_DT",
+];
 
 if (!API_KEY) {
   throw new Error(
@@ -306,19 +318,6 @@ function normalizeBill(row) {
     raw: row,
   };
 }
-
-const STATUS_DATE_FIELDS = [
-  "JRCMIT_CMMT_DT",
-  "JRCMIT_PRSNT_DT",
-  "JRCMIT_PROC_DT",
-  "LAW_CMMT_DT",
-  "LAW_PRSNT_DT",
-  "LAW_PROC_DT",
-  "RGS_PRSNT_DT",
-  "RGS_RSLN_DT",
-  "GVRN_TRSF_DT",
-  "PROM_DT",
-];
 
 function buildStatusDate(row) {
   const dates = STATUS_DATE_FIELDS.map((k) => row[k]).filter(Boolean).sort();

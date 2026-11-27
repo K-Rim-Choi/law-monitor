@@ -44,13 +44,19 @@ jobs:
             || echo "Connection failed (curl exit: $?)"
 
       - name: Fetch National Assembly bills
-        id: fetch_bills
-        if: env.OPEN_ASSEMBLY_API_KEY != ''
-        run: node scripts/fetch-open-assembly.mjs
-        continue-on-error: true
+        run: |
+          node scripts/fetch-open-assembly.mjs
+          node --input-type=module <<'JS'
+          import { readFileSync } from "node:fs";
+          const { bills, query } = JSON.parse(readFileSync("data/bills.json", "utf8"));
+          const fetched = new Set(bills.map(({ billNo }) => billNo));
+          const missing = query.billNos.filter((billNo) => !fetched.has(billNo));
+          if (!bills.length || missing.length) {
+            throw new Error(`Missing bill data: ${missing.join(", ") || "no bills returned"}`);
+          }
+          JS
 
       - name: Persist successfully fetched bills.json
-        if: steps.fetch_bills.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -62,37 +68,12 @@ jobs:
             for attempt in 1 2 3; do
               git fetch origin "${GITHUB_REF_NAME}" && \
               git rebase "origin/${GITHUB_REF_NAME}" && \
-              git push origin "HEAD:${GITHUB_REF_NAME}" && break
+              git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
               echo "푸시 실패, 재시도 ($attempt)..."
               sleep 3
             done
+            exit 1
           fi
-
-      - name: Keep last known-good bills.json on fetch failure
-        if: steps.fetch_bills.outcome == 'failure'
-        run: |
-          echo "API fetch failed — repo의 최신 bills.json(마지막 성공 데이터)을 유지합니다"
-          git checkout -- data/bills.json || true
-          if [ ! -f data/bills.json ]; then
-            cp data/bills.sample.json data/bills.json
-            echo "No existing bills.json found, using sample data"
-          fi
-
-      - name: Use sample data when API key is unavailable
-        if: env.OPEN_ASSEMBLY_API_KEY == ''
-        run: cp data/bills.sample.json data/bills.json
-
-      - name: Stamp generatedAt with sync time
-        if: steps.fetch_bills.outcome != 'success'
-        run: |
-          SYNC_TIME=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
-          node -e "
-            const fs = require('fs');
-            const data = JSON.parse(fs.readFileSync('data/bills.json', 'utf8'));
-            data.generatedAt = '$SYNC_TIME';
-            fs.writeFileSync('data/bills.json', JSON.stringify(data, null, 2) + '\n');
-          "
-          echo "Stamped generatedAt: $SYNC_TIME"
 
       - uses: actions/configure-pages@v5
         with:
